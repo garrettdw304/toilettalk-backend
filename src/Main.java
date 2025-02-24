@@ -5,10 +5,6 @@ import java.net.InetSocketAddress;
 
 public class Main {
     public static void main(String[] args) {
-        Testing.deleteAllData(); // TODO: Remove. This is just for deleting old test data.
-        Testing.genRSAKeys(); // TODO: Remove. This is just for generating test keys.
-        Testing.genTestingCollections(); // TODO: Remove. This is just for generating test data.
-
         try {
             // This initializes the static members of the Env class. We do this so that if there is a problem with them,
             // it happens now instead of on first use of them.
@@ -33,12 +29,7 @@ public class Main {
 
         server.start();
 
-        while (true) {
-            if (System.console().readLine().equals("exit"))
-                break;
-            else
-                System.out.println("Type 'exit' to close this program.");
-        }
+        Commands.Repl();
 
         System.out.println("Stopping, this may take ~10 seconds.");
         server.stop(10);
