@@ -1,3 +1,4 @@
+import com.auth0.jwt.exceptions.JWTVerificationException;
 import com.mongodb.client.*;
 import com.sun.net.httpserver.HttpExchange;
 import org.bson.Document;
@@ -26,6 +27,8 @@ public class ReqHandlers {
             "{ \"error\": \"Invalid username or password.\" }".getBytes(StandardCharsets.UTF_8);
     private static final byte[] BATHROOM_ID_NOT_PRESENT_RESPONSE =
             "{ \"error\": \"Bathroom id not present in request.\" }".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] UNAUTHORIZED_REFRESH =
+            "{ \"error\": \"Token sent could not authorize an access refresh.\" }".getBytes(StandardCharsets.UTF_8);
 
     public static void signUp(HttpExchange e) {
         try (e) {
@@ -91,6 +94,48 @@ public class ReqHandlers {
                 System.out.println(ex); // TODO
                 return;
             }
+        }
+    }
+
+    public static void refreshAccess(HttpExchange e) {
+        try (e) {
+            try {
+                if (!ensureMethod(e, "POST")) return;
+            } catch (IOException ex) {
+                System.out.println(ex); // TODO
+                return;
+            }
+
+            String refreshToken;
+            try {
+                Document reqDoc = getReqDoc(e.getRequestBody());
+                refreshToken = reqDoc.getString("refreshToken");
+            } catch (IOException ex) {
+                System.out.println(ex); // TODO
+                return;
+            }
+
+            String accessToken;
+            try {
+                if (refreshToken == null) throw new Auth.TokenIsNotRefresh();
+                accessToken = Auth.refreshAccess(refreshToken);
+            } catch (Auth.TokenIsNotRefresh | JWTVerificationException ex) {
+                try {
+                    closeOutRequest(e, ResponseCodes.UNAUTHORIZED, UNAUTHORIZED_REFRESH);
+                    return;
+                } catch (IOException exc) {
+                    System.out.println(ex); // TODO
+                    return;
+                }
+            }
+
+            Document resDoc = new Document()
+                    .append("accessToken", accessToken);
+            byte[] response = resDoc.toJson().getBytes();
+            closeOutRequest(e, ResponseCodes.OK, response);
+        } catch (IOException ex) {
+            System.out.println(ex); // TODO
+            return;
         }
     }
 

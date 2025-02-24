@@ -22,6 +22,7 @@ public class Main {
 
         server.createContext("/api/signUp", ReqHandlers::signUp);
         server.createContext("/api/signIn", ReqHandlers::signIn);
+        server.createContext("/api/refreshAccess", ReqHandlers::refreshAccess);
         server.createContext("/api/getReviews", ReqHandlers::getReviews);
         server.createContext("/api/createReview", ReqHandlers::createReview);
         server.createContext("/api/getBathrooms", ReqHandlers::getBathrooms);

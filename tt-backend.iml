@@ -11,5 +11,6 @@
     <orderEntry type="library" name="mongodb.driver.sync" level="project" />
     <orderEntry type="library" name="de.svenkubiak.jBCrypt" level="project" />
     <orderEntry type="library" name="io.github.cdimascio.dotenv.java" level="project" />
+    <orderEntry type="library" name="realityforge.jetbrains.annotations" level="project" />
   </component>
 </module>

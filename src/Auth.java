@@ -1,15 +1,21 @@
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.exceptions.JWTVerificationException;
+import com.auth0.jwt.exceptions.TokenExpiredException;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoDatabase;
 import org.bson.Document;
 import org.bson.types.ObjectId;
+import org.jetbrains.annotations.NotNull;
 import org.mindrot.jbcrypt.BCrypt;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
+import java.time.temporal.TemporalUnit;
+import java.util.Date;
 import java.util.UUID;
 
 public class Auth {
@@ -48,22 +54,37 @@ public class Auth {
         return genTokens(userdata.getString("userid"));
     }
 
-    public static DecodedJWT verify(String token) throws JWTVerificationException {
+    public static String refreshAccess(@NotNull String refreshToken) throws JWTVerificationException, TokenIsNotRefresh {
+        DecodedJWT jwt = verifyRefresh(refreshToken);
+        String userid = jwt.getClaim("userid").asString();
+        return genTokens(userid).accessToken;
+    }
+
+    public static DecodedJWT verify(@NotNull String token) throws JWTVerificationException {
         return JWT.require(Algorithm.RSA256(Env.PUBLIC_KEY, null)).build().verify(token);
+    }
+
+    public static DecodedJWT verifyAccess(@NotNull String token) throws JWTVerificationException, TokenIsNotAccess {
+        DecodedJWT jwt = verify(token);
+        if (!jwt.getClaim("type").asString().equals("access"))
+            throw new TokenIsNotAccess();
+        return jwt;
+    }
+
+    public static DecodedJWT verifyRefresh(@NotNull String token) throws JWTVerificationException, TokenIsNotRefresh {
+        DecodedJWT jwt = verify(token);
+        if (!jwt.getClaim("type").asString().equals("refresh"))
+            throw new TokenIsNotRefresh();
+        return jwt;
     }
 
     /**
      * Does not ensure a user with the email address or username does not exist.
      * Does not add this document to the database.
-     * db is used to get a unique userid.
-     * @param email
-     * @param username
-     * @param password
-     * @param db
-     * @return
-     * @throws InternalError
+     * db is used to get a unique userid (assuming all userids are already in the users table).
      */
-    public static Document createNewUserDoc(String email, String username, String password, MongoDatabase db) throws InternalError {
+    public static Document createNewUserDoc(String email, String username, String password, MongoDatabase db)
+            throws InternalError {
         String salt = BCrypt.gensalt();
         return new Document()
                 .append("_id", new ObjectId())
@@ -75,19 +96,23 @@ public class Auth {
     }
 
     private static Tokens genTokens(String userid) {
-        String accessToken = JWT.create()
+        return new Tokens(genAccessToken(userid), genRefreshToken(userid));
+    }
+
+    private static String genAccessToken(String userid) {
+        return JWT.create()
                 .withClaim("type", "access")
                 .withClaim("userid", userid)
-                .withClaim("expiresAt", LocalDateTime.now().plusHours(1).toEpochSecond(ZoneOffset.UTC))
+                .withExpiresAt(Date.from(LocalDateTime.now().plusHours(1).toInstant(ZoneOffset.UTC)))
                 .sign(Algorithm.RSA256(Env.PUBLIC_KEY, Env.PRIVATE_KEY));
+    }
 
-        String refreshToken = JWT.create()
+    private static String genRefreshToken(String userid) {
+        return JWT.create()
                 .withClaim("type", "refresh")
                 .withClaim("userid", userid)
-                .withClaim("expiresAt", LocalDateTime.now().plusDays(30).toEpochSecond(ZoneOffset.UTC))
+                .withExpiresAt(Date.from(LocalDateTime.now().plusDays(30).toInstant(ZoneOffset.UTC)))
                 .sign(Algorithm.RSA256(Env.PUBLIC_KEY, Env.PRIVATE_KEY));
-
-        return new Tokens(accessToken, refreshToken);
     }
 
     private static boolean validateEmail(String email) {
@@ -116,4 +141,7 @@ public class Auth {
     public static class InvalidEmail extends AuthException { }
     public static class InvalidUsername extends AuthException { }
     public static class InvalidPassword extends AuthException { }
+
+    public static class TokenIsNotAccess extends AuthException { }
+    public static class TokenIsNotRefresh extends AuthException { }
 }
