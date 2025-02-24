@@ -26,31 +26,10 @@ public class Auth {
             if (db.getCollection("users").find(new Document("username", username)).first() != null)
                 throw new DuplicateUsername();
 
-            String userid = null;
-            boolean foundId = false;
-            for (int i = 0; i < 100; i++) {
-                userid = UUID.randomUUID().toString();
-                if (db.getCollection("users").find(new Document("userid", userid)).first() == null) {
-                    foundId = true;
-                    break;
-                }
-            }
-            if (!foundId) {
-                System.out.println("ERROR: Could not find free unique userid after 100 attempts.");
-                throw new InternalError();
-            }
+            Document userDoc = createNewUserDoc(email, username, password, db);
+            db.getCollection("users").insertOne(userDoc);
 
-            String salt = BCrypt.gensalt();
-            db.getCollection("users").insertOne(
-                    new Document()
-                            .append("_id", new ObjectId())
-                            .append("userid", userid)
-                            .append("email", email)
-                            .append("username", username)
-                            .append("password", BCrypt.hashpw(password, salt))
-                            .append("salt", salt));
-
-            return genTokens(userid);
+            return genTokens(userDoc.getString("userid"));
         }
     }
 
@@ -71,6 +50,28 @@ public class Auth {
 
     public static DecodedJWT verify(String token) throws JWTVerificationException {
         return JWT.require(Algorithm.RSA256(Env.PUBLIC_KEY, null)).build().verify(token);
+    }
+
+    /**
+     * Does not ensure a user with the email address or username does not exist.
+     * Does not add this document to the database.
+     * db is used to get a unique userid.
+     * @param email
+     * @param username
+     * @param password
+     * @param db
+     * @return
+     * @throws InternalError
+     */
+    public static Document createNewUserDoc(String email, String username, String password, MongoDatabase db) throws InternalError {
+        String salt = BCrypt.gensalt();
+        return new Document()
+                .append("_id", new ObjectId())
+                .append("userid", DB.getNewUserId(db))
+                .append("email", email)
+                .append("username", username)
+                .append("password", BCrypt.hashpw(password, salt))
+                .append("salt", salt);
     }
 
     private static Tokens genTokens(String userid) {

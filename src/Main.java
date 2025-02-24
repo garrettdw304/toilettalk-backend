@@ -5,6 +5,10 @@ import java.net.InetSocketAddress;
 
 public class Main {
     public static void main(String[] args) {
+        Testing.deleteAllData(); // TODO: Remove. This is just for deleting old test data.
+        Testing.genRSAKeys(); // TODO: Remove. This is just for generating test keys.
+        Testing.genTestingCollections(); // TODO: Remove. This is just for generating test data.
+
         try {
             // This initializes the static members of the Env class. We do this so that if there is a problem with them,
             // it happens now instead of on first use of them.

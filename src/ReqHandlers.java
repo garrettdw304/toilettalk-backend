@@ -6,6 +6,8 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 
 public class ReqHandlers {
+    private static final int REVIEWS_PER_PAGE = 10;
+
     private static final byte[] INVALID_METHOD_RESPONSE =
             "{ \"error\": \"Method not allowed.\" }".getBytes(StandardCharsets.UTF_8);
     private static final byte[] INTERNAL_ERROR_RESPONSE =
@@ -59,6 +61,7 @@ public class ReqHandlers {
                 }
             } catch (IOException ex) {
                 System.out.println(ex); // TODO
+                return;
             }
         }
     }
@@ -86,6 +89,7 @@ public class ReqHandlers {
                 }
             } catch (IOException ex) {
                 System.out.println(ex); // TODO
+                return;
             }
         }
     }
@@ -93,9 +97,10 @@ public class ReqHandlers {
     public static void getReviews(HttpExchange e) {
         try (e) {
             try {
-                ensureMethod(e, "GET");
+                if (!ensureMethod(e, "GET")) return;
             } catch (IOException ex) {
-                throw new RuntimeException(ex); // TODO
+                System.out.println(ex); // TODO
+                return;
             }
 
             String bathroomid;
@@ -105,14 +110,16 @@ public class ReqHandlers {
                 bathroomid = reqDoc.getString("bathroomid");
                 page = reqDoc.getInteger("page");
             } catch (IOException ex) {
-                throw new RuntimeException(ex); // TODO
+                System.out.println(ex); // TODO
+                return;
             }
             if (page < 1) page = 1; // TODO: Magic page base number
             if (bathroomid == null) {
                 try {
                     closeOutRequest(e, ResponseCodes.BAD_REQUEST, BATHROOM_ID_NOT_PRESENT_RESPONSE);
                 } catch (IOException ex) {
-                    throw new RuntimeException(ex); // TODO
+                    System.out.println(ex); // TODO
+                    return;
                 }
                 return;
             }
@@ -121,24 +128,30 @@ public class ReqHandlers {
                 MongoDatabase db = DB.db(c);
 
                 StringBuilder sb = new StringBuilder("[");
-                FindIterable<Document> docs = db.getCollection("reviews").find(new Document("bathroomid", bathroomid));
-                // TODO: Magic 10 as reviews per page and page base number
-                try (MongoCursor<Document> cursor = docs.skip((page - 1) * 10).limit(10).iterator()) {
+                FindIterable<Document> docs =
+                        db.getCollection("reviews").find(new Document("bathroomid", bathroomid));
+
+                // TODO: Magic page base number
+                try (MongoCursor<Document> cursor =
+                             docs.skip((page - 1) * REVIEWS_PER_PAGE).limit(REVIEWS_PER_PAGE).iterator()) {
                     while (cursor.hasNext()) {
                         Document d = cursor.next();
-                        d.remove("_id");
-                        sb.append(d.toJson());
-                        sb.append(',');
+                        sb.append(new Document()
+                                .append("username", db.getCollection("users").find(new Document("userid",
+                                        d.getString("userid"))).first().getString("username"))
+                                .append("rating", d.getInteger("rating"))
+                                .append("review", d.getString("review")).toJson()).append(", ");
                     }
                 }
-                if (!sb.isEmpty()) sb.delete(sb.length() - 1, sb.length()); // Deletes final comma.
+                if (!sb.isEmpty()) sb.delete(sb.length() - 2, sb.length()); // Deletes final comma and space after it.
                 sb.append("]");
                 byte[] response = sb.toString().getBytes(StandardCharsets.UTF_8);
 
                 try {
                     closeOutRequest(e, ResponseCodes.OK, response);
                 } catch (IOException ex) {
-                    throw new RuntimeException(ex); // TODO
+                    System.out.println(ex); // TODO
+                    return;
                 }
             }
         }
