@@ -1,4 +1,5 @@
 import com.auth0.jwt.exceptions.JWTVerificationException;
+import com.auth0.jwt.interfaces.DecodedJWT;
 import com.mongodb.client.*;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
@@ -41,6 +42,8 @@ public class ReqHandlers {
             "{ \"error\": \"Bathroom id not present in request.\" }".getBytes(StandardCharsets.UTF_8);
     private static final byte[] UNAUTHORIZED_REFRESH =
             "{ \"error\": \"Token sent could not authorize an access refresh.\" }".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] UNAUTHORIZED_CREATE_REVIEW =
+            "{ \"error\": \"Token sent could not authorize a create review.\" }".getBytes(StandardCharsets.UTF_8);
 
     /**
      * Helper method that calls an HttpHandler with the provided HttpExchange
@@ -53,7 +56,7 @@ public class ReqHandlers {
         try (e) {
             handler.handle(e);
         } catch (Exception ex) {
-            printException(e, ex);
+            printException(e, ex, "This exception was uncaught (and then caught by handleUncaughtExceptions).");
         }
     }
 
@@ -189,72 +192,119 @@ public class ReqHandlers {
 
     // TODO: Allow users to sort by rating.
     public static void getReviews(HttpExchange e) {
-        try (e) {
+        try {
+            if (!ensureMethod(e, "GET")) return;
+        } catch (IOException ex) {
+            printException(e, ex, "Failed while sending error response about wrong request method.");
+            return;
+        }
+
+        String bathroomid;
+        int page;
+        try {
+            Document reqDoc = getReqDoc(e.getRequestBody());
+            bathroomid = reqDoc.getString("bathroomid");
+            page = reqDoc.getInteger("page"); // TODO: What if null is returned?
+        } catch (IOException ex) {
+            printException(e, ex, "Failed while getting request body.");
+            return;
+        }
+        if (page < BASE_PAGE_NUMBER) page = BASE_PAGE_NUMBER;
+        if (bathroomid == null) {
             try {
-                if (!ensureMethod(e, "GET")) return;
+                closeOutRequest(e, ResponseCodes.BAD_REQUEST, BATHROOM_ID_NOT_PRESENT_RESPONSE);
             } catch (IOException ex) {
-                printException(e, ex, "Failed while sending error response about wrong request method.");
+                printException(e, ex, "Failed while sending error response about a bathroom not existing.");
                 return;
             }
+            return;
+        }
 
-            String bathroomid;
-            int page;
+        try (final MongoClient c = DB.client()) {
+            MongoDatabase db = DB.db(c);
+
+            StringBuilder sb = new StringBuilder("[");
+            FindIterable<Document> docs =
+                    db.getCollection("reviews").find(new Document("bathroomid", bathroomid));
+
+            try (MongoCursor<Document> cursor =
+                         docs.skip((page - BASE_PAGE_NUMBER) * REVIEWS_PER_PAGE).limit(REVIEWS_PER_PAGE).iterator()) {
+                while (cursor.hasNext()) {
+                    Document d = cursor.next();
+                    sb.append(new Document()
+                            .append("username", db.getCollection("users").find(new Document("userid",
+                                    d.getString("userid"))).first().getString("username"))
+                            .append("rating", d.getInteger("rating"))
+                            .append("review", d.getString("review")).toJson()).append(", ");
+                }
+            }
+            if (!sb.isEmpty()) sb.delete(sb.length() - 2, sb.length()); // Deletes final comma and space after it.
+            sb.append("]");
+            byte[] response = sb.toString().getBytes(StandardCharsets.UTF_8);
+
             try {
-                Document reqDoc = getReqDoc(e.getRequestBody());
-                bathroomid = reqDoc.getString("bathroomid");
-                page = reqDoc.getInteger("page"); // TODO: What if null is returned?
+                closeOutRequest(e, ResponseCodes.OK, response);
             } catch (IOException ex) {
-                printException(e, ex, "Failed while getting request body.");
+                printException(e, ex, "Failed while sending response containing reviews.");
                 return;
-            }
-            if (page < BASE_PAGE_NUMBER) page = BASE_PAGE_NUMBER;
-            if (bathroomid == null) {
-                try {
-                    closeOutRequest(e, ResponseCodes.BAD_REQUEST, BATHROOM_ID_NOT_PRESENT_RESPONSE);
-                } catch (IOException ex) {
-                    printException(e, ex, "Failed while sending error response about a bathroom not existing.");
-                    return;
-                }
-                return;
-            }
-
-            try (final MongoClient c = DB.client()) {
-                MongoDatabase db = DB.db(c);
-
-                StringBuilder sb = new StringBuilder("[");
-                FindIterable<Document> docs =
-                        db.getCollection("reviews").find(new Document("bathroomid", bathroomid));
-
-                try (MongoCursor<Document> cursor =
-                             docs.skip((page - BASE_PAGE_NUMBER) * REVIEWS_PER_PAGE).limit(REVIEWS_PER_PAGE).iterator()) {
-                    while (cursor.hasNext()) {
-                        Document d = cursor.next();
-                        sb.append(new Document()
-                                .append("username", db.getCollection("users").find(new Document("userid",
-                                        d.getString("userid"))).first().getString("username"))
-                                .append("rating", d.getInteger("rating"))
-                                .append("review", d.getString("review")).toJson()).append(", ");
-                    }
-                }
-                if (!sb.isEmpty()) sb.delete(sb.length() - 2, sb.length()); // Deletes final comma and space after it.
-                sb.append("]");
-                byte[] response = sb.toString().getBytes(StandardCharsets.UTF_8);
-
-                try {
-                    closeOutRequest(e, ResponseCodes.OK, response);
-                } catch (IOException ex) {
-                    printException(e, ex, "Failed while sending response containing reviews.");
-                    return;
-                }
             }
         }
     }
 
     public static void createReview(HttpExchange e) {
         try {
-            closeOutRequest(e, ResponseCodes.BAD_REQUEST, "No!".getBytes(StandardCharsets.UTF_8));
+            if (!ensureMethod(e, "PUT")) return;
         } catch (IOException ex) {
-            throw new RuntimeException(ex);
+            printException(e, ex, "Failed while sending error response about wrong request method.");
+            return;
+        }
+
+        DecodedJWT accessToken;
+        String bathroomid;
+        int rating;
+        String review;
+        try {
+            Document reqDoc = getReqDoc(e.getRequestBody());
+            accessToken = Auth.verifyAccess(reqDoc.getString("accessToken"));
+            bathroomid = reqDoc.getString("bathroomid");
+            rating = reqDoc.getInteger("rating");
+            review = reqDoc.getString("review");
+
+        } catch (IOException ex) {
+            printException(e, ex, "Failed while getting request body.");
+            return;
+        } catch (Auth.TokenIsNotAccess | JWTVerificationException ex) {
+            try {
+                System.err.println(ex);
+                closeOutRequest(e, ResponseCodes.UNAUTHORIZED, UNAUTHORIZED_CREATE_REVIEW);
+            } catch (IOException exc) {
+                printException(e, exc, "Failed while sending error response about the client being unauthorized.");
+                return;
+            }
+            return;
+        }
+
+        String userid = accessToken.getClaim("userid").asString();
+
+        try (MongoClient c = DB.client()) {
+            MongoDatabase db = DB.db(c);
+            MongoCollection<Document> collection = db.getCollection("reviews");
+            Document oldReview = collection.find(new Document()
+                    .append("userid", userid)
+                    .append("bathroomid", bathroomid)).first();
+            if (oldReview != null)
+                collection.deleteOne(oldReview);
+            collection.insertOne(new Document()
+                    .append("userid", userid)
+                    .append("bathroomid", bathroomid)
+                    .append("rating", rating)
+                    .append("review", review));
+        }
+
+        try {
+            closeOutRequest(e, ResponseCodes.OK);
+        } catch (IOException ex) {
+            printException(e, ex, "Failed while sending response confirming creation of new review.");
         }
     }
 
@@ -298,10 +348,19 @@ public class ReqHandlers {
         }
     }
 
-    private static void closeOutRequest(HttpExchange e, int rCode, byte[] response) throws IOException {
-        e.sendResponseHeaders(rCode, response.length);
-        e.getResponseBody().write(response);
-        e.close();
+    private static void closeOutRequest(HttpExchange e, int rCode) throws IOException {
+        closeOutRequest(e, rCode, null);
+    }
+
+    private static void closeOutRequest(HttpExchange e, int rCode, byte @Nullable [] response) throws IOException {
+        if (response == null) {
+            e.sendResponseHeaders(rCode, 0);
+            e.close();
+        } else {
+            e.sendResponseHeaders(rCode, response.length);
+            e.getResponseBody().write(response);
+            e.close();
+        }
     }
 
     /**

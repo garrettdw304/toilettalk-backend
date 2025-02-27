@@ -98,7 +98,9 @@ public class Auth {
         return JWT.create()
                 .withClaim("type", "access")
                 .withClaim("userid", userid)
-                .withExpiresAt(Date.from(LocalDateTime.now().plusHours(1).toInstant(ZoneOffset.UTC)))
+                // TODO: This could be different when hosted on Google's VMs.
+                // For some reason this has to be in EST (aka UTC-5) maybe because that is the backend's timezone?
+                .withExpiresAt(Date.from(LocalDateTime.now().plusHours(1).toInstant(ZoneOffset.ofHours(-5))))
                 .sign(Algorithm.RSA256(Env.PUBLIC_KEY, Env.PRIVATE_KEY));
     }
 
@@ -106,7 +108,9 @@ public class Auth {
         return JWT.create()
                 .withClaim("type", "refresh")
                 .withClaim("userid", userid)
-                .withExpiresAt(Date.from(LocalDateTime.now().plusDays(30).toInstant(ZoneOffset.UTC)))
+                // TODO: This could be different when hosted on Google's VMs.
+                // For some reason this has to be in EST (aka UTC-5) maybe because that is the backend's timezone?
+                .withExpiresAt(Date.from(LocalDateTime.now().plusDays(30).toInstant(ZoneOffset.ofHours(-5))))
                 .sign(Algorithm.RSA256(Env.PUBLIC_KEY, Env.PRIVATE_KEY));
     }
 
