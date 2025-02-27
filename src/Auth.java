@@ -1,7 +1,6 @@
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.exceptions.JWTVerificationException;
-import com.auth0.jwt.exceptions.TokenExpiredException;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoDatabase;
@@ -10,13 +9,9 @@ import org.bson.types.ObjectId;
 import org.jetbrains.annotations.NotNull;
 import org.mindrot.jbcrypt.BCrypt;
 
-import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
-import java.time.temporal.ChronoUnit;
-import java.time.temporal.TemporalUnit;
 import java.util.Date;
-import java.util.UUID;
 
 public class Auth {
     public static Tokens signUp(String email, String username, String password)

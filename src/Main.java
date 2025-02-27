@@ -20,13 +20,20 @@ public class Main {
             throw new Error(e);
         }
 
-        server.createContext("/api/signUp", ReqHandlers::signUp);
-        server.createContext("/api/signIn", ReqHandlers::signIn);
-        server.createContext("/api/refreshAccess", ReqHandlers::refreshAccess);
-        server.createContext("/api/getReviews", ReqHandlers::getReviews);
-        server.createContext("/api/createReview", ReqHandlers::createReview);
-        server.createContext("/api/getBathrooms", ReqHandlers::getBathrooms);
-        server.createContext("/api/getBuildings", ReqHandlers::getBuildings);
+        server.createContext("/api/signUp",
+                e -> ReqHandlers.handleUncaughtExceptions(ReqHandlers::signUp, e));
+        server.createContext("/api/signIn",
+                e -> ReqHandlers.handleUncaughtExceptions(ReqHandlers::signIn, e));
+        server.createContext("/api/refreshAccess",
+                e -> ReqHandlers.handleUncaughtExceptions(ReqHandlers::refreshAccess, e));
+        server.createContext("/api/getReviews",
+                e -> ReqHandlers.handleUncaughtExceptions(ReqHandlers::getReviews, e));
+        server.createContext("/api/createReview",
+                e -> ReqHandlers.handleUncaughtExceptions(ReqHandlers::createReview, e));
+        server.createContext("/api/getBathrooms",
+                e -> ReqHandlers.handleUncaughtExceptions(ReqHandlers::getBathrooms, e));
+        server.createContext("/api/getBuildings",
+                e -> ReqHandlers.handleUncaughtExceptions(ReqHandlers::getBathrooms, e));
 
         server.start();
 
