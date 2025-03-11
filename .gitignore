@@ -35,3 +35,7 @@ public.key
 .rest
 .idea/ 
 .tt-backend
+
+### Maven ###
+target/
+keys/

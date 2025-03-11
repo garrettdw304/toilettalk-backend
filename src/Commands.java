@@ -6,8 +6,8 @@ public class Commands {
     private static final Map<String, CommandHandler> HANDLERS = new HashMap<>();
     private static final Map<String, String> HELPERS = new HashMap<>();
 
-    static {{
-        addCommand("exit", (_) -> {},
+    static {
+        addCommand("exit", (args) -> {},  // Replaced '_' with 'args'
                 "exit\n\tCloses the application.");
         addCommand("help", Commands::helpHandler,
                 "help [command]\n\tDisplays help information on commands.");
@@ -18,7 +18,7 @@ public class Commands {
                         \t\tsubcmd == delete -> Deletes all data.
                         \t\tsubcmd == keys -> Generates RSA keys in public.key and private.key files.
                         \t\tsubcmd == data -> Generates testing data and stores it into the database.""");
-    }};
+    }
 
     /**
      * @return True if exit was called, false otherwise.
@@ -42,9 +42,12 @@ public class Commands {
     }
 
     public static void Repl() {
-        while (true)
-            if (execute(System.console().readLine()))
+        Scanner scanner = new Scanner(System.in);  // Replaced System.console() for robustness
+        while (true) {
+            System.out.print("> ");  // Added prompt for clarity
+            if (execute(scanner.nextLine()))
                 return;
+        }
     }
 
     private static void addCommand(String command, CommandHandler handler, String helpMsg) {
