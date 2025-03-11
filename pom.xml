@@ -13,7 +13,7 @@
     </properties>
 
     <build>
-        <sourceDirectory>src</sourceDirectory> <!-- Point to /src/ instead of src/main/java/ -->
+        <sourceDirectory>src</sourceDirectory> 
     </build>
 
     <dependencies>

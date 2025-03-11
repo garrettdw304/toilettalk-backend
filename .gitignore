@@ -33,3 +33,5 @@ bin/
 private.key
 public.key
 .rest
+.idea/ 
+.tt-backend
