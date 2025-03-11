@@ -4,7 +4,7 @@ This project is the backend for the Toilet Talk web application.
 
 ## Project Setup
 
-To setup the project for development, the following initializations are required.
+To set up the project for development, the following initializations are required.
 
 ### 1) A .env file must be created in the project's root directory.
 
