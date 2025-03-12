@@ -309,6 +309,7 @@ public class ReqHandlers {
     }
 
     public static void getBathrooms(HttpExchange e) {
+        // remember to update body->raw JSON on postman
         try {
             closeOutRequest(e, ResponseCodes.BAD_REQUEST, "No!".getBytes(StandardCharsets.UTF_8));
         } catch (IOException ex) {
@@ -317,6 +318,7 @@ public class ReqHandlers {
     }
 
     public static void getBuildings(HttpExchange e) {
+        // remember to update body->raw JSON on postman
         try {
             closeOutRequest(e, ResponseCodes.BAD_REQUEST, "No!".getBytes(StandardCharsets.UTF_8));
         } catch (IOException ex) {

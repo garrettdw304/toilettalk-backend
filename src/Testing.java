@@ -13,6 +13,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.*;
 
 public class Testing {
+    @SuppressWarnings("resource")
     public static void genTestingCollections() {
         System.out.println("Please type 'confirm data' if you would like to populate the database with random testing data.");
         if (!new Scanner(System.in).nextLine().equals("confirm data"))
@@ -87,6 +88,7 @@ public class Testing {
         }
     }
 
+    @SuppressWarnings("resource")
     public static void deleteAllData() {
         System.out.println("Please type 'confirm delete all' if you would like to delete all data in the database.");
         if (!new Scanner(System.in).nextLine().equals("confirm delete all"))
@@ -101,6 +103,7 @@ public class Testing {
         }
     }
 
+    @SuppressWarnings("resource")
     public static void genRSAKeys() {
         System.out.println("Please type 'confirm keys' if you would like to create public.key and private.key and populate them with keys (this will overwrite existing keys).");
         if (!new Scanner(System.in).nextLine().equals("confirm keys"))

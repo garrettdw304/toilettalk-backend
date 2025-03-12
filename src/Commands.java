@@ -42,11 +42,12 @@ public class Commands {
     }
 
     public static void Repl() {
-        Scanner scanner = new Scanner(System.in);  // Replaced System.console() for robustness
-        while (true) {
-            System.out.print("> ");  // Added prompt for clarity
-            if (execute(scanner.nextLine()))
-                return;
+        try (Scanner scanner = new Scanner(System.in)) {
+            while (true) {
+                System.out.print("> ");  // Added prompt for clarity
+                if (execute(scanner.nextLine()))
+                    return;
+            }
         }
     }
 
