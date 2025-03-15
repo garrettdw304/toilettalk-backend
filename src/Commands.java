@@ -1,3 +1,4 @@
+import java.io.*;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Scanner;
@@ -7,7 +8,7 @@ public class Commands {
     private static final Map<String, String> HELPERS = new HashMap<>();
 
     static {{
-        addCommand("exit", (_) -> {},
+        addCommand("exit", (_a) -> {},
                 "exit\n\tCloses the application.");
         addCommand("help", Commands::helpHandler,
                 "help [command]\n\tDisplays help information on commands.");
@@ -41,10 +42,12 @@ public class Commands {
         return false;
     }
 
-    public static void Repl() {
-        while (true)
-            if (execute(System.console().readLine()))
+    public static void Repl() throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        while (true) {
+            if (execute(br.readLine()))
                 return;
+        }
     }
 
     private static void addCommand(String command, CommandHandler handler, String helpMsg) {

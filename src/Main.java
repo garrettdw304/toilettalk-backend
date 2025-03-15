@@ -42,7 +42,11 @@ public class Main {
             System.err.println("ENV initialization failed. THE SERVER IS NOT RUNNING! Fix the errors and relaunch the program.");
         }
 
-        Commands.Repl();
+        try {
+            Commands.Repl();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
 
         if (Env.INIT_SUCCESSFUL) {
             System.out.println("Stopping, this may take ~10 seconds.");
