@@ -60,54 +60,63 @@ public class ReqHandlers {
         }
     }
 
-    public static void signUp(HttpExchange e) {
+    public static void signUp(HttpExchange e) throws IOException {
+        System.out.println("Received /api/signUp request");
         try {
-            if (!ensureMethod(e, "POST")) return;
+            if (!ensureMethod(e, "POST")) {
+                System.out.println("Method not POST, returning");
+                return;
+            }
         } catch (IOException ex) {
             printException(e, ex, "Failed while sending error response about wrong request method.");
             return;
         }
-
+    
         String email;
         String username;
         String password;
         try {
+            System.out.println("Parsing request body");
             Document req = getReqDoc(e.getRequestBody());
             email = req.getString("email");
             username = req.getString("username");
             password = req.getString("password");
+            System.out.println("Request parsed: email=" + email + ", username=" + username);
         } catch (IOException ex) {
             printException(e, ex, "Failed while getting request body.");
             return;
         }
-
+    
         try {
-            try {
-                Auth.Tokens tokens = Auth.signUp(email, username, password);
-
-                Document resDoc = new Document();
-                resDoc.put("accessToken", tokens.accessToken());
-                resDoc.put("refreshToken", tokens.refreshToken());
-                byte[] response = resDoc.toJson().getBytes();
-                e.sendResponseHeaders(ResponseCodes.OK, response.length);
-                e.getResponseBody().write(response);
-            } catch (Auth.DuplicateEmail ex) {
-                closeOutRequest(e, ResponseCodes.CONFLICT, EMAIL_ALREADY_EXISTS_RESPONSE);
-            } catch (Auth.InternalError ex) {
-                closeOutRequest(e, ResponseCodes.INTERNAL_SERVER_ERROR, INTERNAL_ERROR_RESPONSE);
-            } catch (Auth.DuplicateUsername ex) {
-                closeOutRequest(e, ResponseCodes.CONFLICT, USERNAME_ALREADY_EXISTS_RESPONSE);
-            } catch (Auth.InvalidUsername ex) {
-                closeOutRequest(e, ResponseCodes.BAD_REQUEST, INVALID_USERNAME_RESPONSE);
-            } catch (Auth.InvalidEmail ex) {
-                closeOutRequest(e, ResponseCodes.BAD_REQUEST, INVALID_EMAIL_RESPONSE);
-            } catch (Auth.InvalidPassword ex) {
-                closeOutRequest(e, ResponseCodes.BAD_REQUEST, INVALID_PASSWORD_RESPONSE);
-            } catch (IOException ex) {
-                printException(e, ex, "Failed while responding to client with tokens for new account.");
-            }
+            System.out.println("Calling Auth.signUp");
+            Auth.Tokens tokens = Auth.signUp(email, username, password);
+    
+            Document resDoc = new Document();
+            resDoc.put("accessToken", tokens.accessToken());
+            resDoc.put("refreshToken", tokens.refreshToken());
+            byte[] response = resDoc.toJson().getBytes();
+            System.out.println("Sending response: " + resDoc.toJson());
+            e.sendResponseHeaders(ResponseCodes.OK, response.length);
+            e.getResponseBody().write(response);
+        } catch (Auth.DuplicateEmail ex) {
+            closeOutRequest(e, ResponseCodes.CONFLICT, EMAIL_ALREADY_EXISTS_RESPONSE);
+        } catch (Auth.InternalError ex) {
+            closeOutRequest(e, ResponseCodes.INTERNAL_SERVER_ERROR, INTERNAL_ERROR_RESPONSE);
+        } catch (Auth.DuplicateUsername ex) {
+            closeOutRequest(e, ResponseCodes.CONFLICT, USERNAME_ALREADY_EXISTS_RESPONSE);
+        } catch (Auth.InvalidUsername ex) {
+            closeOutRequest(e, ResponseCodes.BAD_REQUEST, INVALID_USERNAME_RESPONSE);
+        } catch (Auth.InvalidEmail ex) {
+            closeOutRequest(e, ResponseCodes.BAD_REQUEST, INVALID_EMAIL_RESPONSE);
+        } catch (Auth.InvalidPassword ex) {
+            closeOutRequest(e, ResponseCodes.BAD_REQUEST, INVALID_PASSWORD_RESPONSE);
         } catch (IOException ex) {
-            printException(e, ex, "Failed while sending an error response.");
+            printException(e, ex, "Failed while responding to client with tokens for new account.");
+        }
+        try {
+            e.getResponseBody().close();
+        } catch (IOException ex) {
+            printException(e, ex, "Failed while closing response body.");
         }
     }
 
