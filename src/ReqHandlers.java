@@ -90,8 +90,7 @@ public class ReqHandlers {
                         "AccessToken=" + tokens.accessToken() + "; Path=/; HttpOnly; SameSite=Strict");
                 e.getResponseHeaders().add("Set-Cookie",
                         "RefreshToken=" + tokens.refreshToken() + "; Path=/; HttpOnly; SameSite=Strict");
-                e.sendResponseHeaders(ResponseCodes.OK, 0);
-                e.close();
+                closeOutRequest(e, ResponseCodes.OK);
             } catch (Auth.DuplicateEmail ex) {
                 closeOutRequest(e, ResponseCodes.CONFLICT, EMAIL_ALREADY_EXISTS_RESPONSE);
             } catch (Auth.InternalError ex) {
@@ -138,8 +137,7 @@ public class ReqHandlers {
                     "AccessToken=" + tokens.accessToken() + "; Path=/; HttpOnly; SameSite=Strict");
             e.getResponseHeaders().add("Set-Cookie",
                     "RefreshToken=" + tokens.refreshToken() + "; Path=/; HttpOnly; SameSite=Strict");
-            e.sendResponseHeaders(ResponseCodes.OK, 0);
-            e.close();
+            closeOutRequest(e, ResponseCodes.OK);
         } catch (Auth.UserNotFound | Auth.IncorrectPassword ex) {
             try {
                 closeOutRequest(e, ResponseCodes.UNAUTHORIZED, UNAUTHORIZED_SIGN_IN_RESPONSE);
@@ -159,14 +157,7 @@ public class ReqHandlers {
             return;
         }
 
-        String refreshToken;
-        try {
-            Document reqDoc = getReqDoc(e.getRequestBody());
-            refreshToken = reqDoc.getString("refreshToken");
-        } catch (IOException ex) {
-            printException(e, ex, "Failed while getting request body.");
-            return;
-        }
+        String refreshToken = Auth.refreshFromCookies(e.getRequestHeaders().get("Cookie"));
 
         String accessToken;
         try {
@@ -182,11 +173,11 @@ public class ReqHandlers {
             }
         }
 
-        Document resDoc = new Document()
-                .append("accessToken", accessToken);
-        byte[] response = resDoc.toJson().getBytes();
         try {
-            closeOutRequest(e, ResponseCodes.OK, response);
+            // TODO: Set Secure also to ensure HTTPS once HTTPS is implemented.
+            e.getResponseHeaders().add("Set-Cookie",
+                    "AccessToken=" + accessToken + "; Path=/; HttpOnly; SameSite=Strict");
+            closeOutRequest(e, ResponseCodes.OK);
         } catch (IOException ex) {
             printException(e, ex, "Failed while sending response containing new access token.");
         }
@@ -267,7 +258,10 @@ public class ReqHandlers {
         String review;
         try {
             Document reqDoc = getReqDoc(e.getRequestBody());
-            accessToken = Auth.verifyAccess(reqDoc.getString("accessToken"));
+            String accessCookie = Auth.accessFromCookies(e.getRequestHeaders().get("Cookie"));
+            if (accessCookie == null)
+                throw new Auth.TokenIsNotAccess();
+            accessToken = Auth.verifyAccess(accessCookie);
             bathroomid = reqDoc.getString("bathroomid");
             rating = reqDoc.getInteger("rating");
             review = reqDoc.getString("review");

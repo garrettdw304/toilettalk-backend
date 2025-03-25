@@ -12,6 +12,7 @@ import org.mindrot.jbcrypt.BCrypt;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Date;
+import java.util.List;
 
 public class Auth {
     public static Tokens signUp(String email, String username, String password)
@@ -88,6 +89,32 @@ public class Auth {
                 .append("username", username)
                 .append("password", BCrypt.hashpw(password, salt))
                 .append("salt", salt);
+    }
+
+    public static String accessFromCookies(List<String> cookies) {
+        for (String cookie : cookies) {
+            int index = cookie.indexOf(';');
+            if (index == -1)
+                continue;
+            if (cookie.startsWith("AccessToken=")) {
+                return cookie.substring(index);
+            }
+        }
+
+        return null;
+    }
+
+    public static String refreshFromCookies(List<String> cookies) {
+        for (String cookie : cookies) {
+            int index = cookie.indexOf(';');
+            if (index == -1)
+                continue;
+            if (cookie.startsWith("RefreshToken=")) {
+                return cookie.substring(index);
+            }
+        }
+
+        return null;
     }
 
     private static Tokens genTokens(String userid) {
