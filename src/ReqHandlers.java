@@ -85,12 +85,13 @@ public class ReqHandlers {
             try {
                 Auth.Tokens tokens = Auth.signUp(email, username, password);
 
-                Document resDoc = new Document();
-                resDoc.put("accessToken", tokens.accessToken());
-                resDoc.put("refreshToken", tokens.refreshToken());
-                byte[] response = resDoc.toJson().getBytes();
-                e.sendResponseHeaders(ResponseCodes.OK, response.length);
-                e.getResponseBody().write(response);
+                // TODO: Set Secure also to ensure HTTPS once HTTPS is implemented.
+                e.getResponseHeaders().add("Set-Cookie",
+                        "AccessToken=" + tokens.accessToken() + "; Path=/; HttpOnly; SameSite=Strict");
+                e.getResponseHeaders().add("Set-Cookie",
+                        "RefreshToken=" + tokens.refreshToken() + "; Path=/; HttpOnly; SameSite=Strict");
+                e.sendResponseHeaders(ResponseCodes.OK, 0);
+                e.close();
             } catch (Auth.DuplicateEmail ex) {
                 closeOutRequest(e, ResponseCodes.CONFLICT, EMAIL_ALREADY_EXISTS_RESPONSE);
             } catch (Auth.InternalError ex) {
