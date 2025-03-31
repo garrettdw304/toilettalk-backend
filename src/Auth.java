@@ -11,6 +11,7 @@ import org.mindrot.jbcrypt.BCrypt;
 
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
@@ -91,30 +92,43 @@ public class Auth {
                 .append("salt", salt);
     }
 
-    public static String accessFromCookies(List<String> cookies) {
-        for (String cookie : cookies) {
-            int index = cookie.indexOf(';');
-            if (index == -1)
-                continue;
-            if (cookie.startsWith("AccessToken=")) {
-                return cookie.substring(index);
+    public static String accessFromCookies(List<String> cookiesList) {
+        if (cookiesList == null)
+            return null;
+        for (String cookies : cookiesList) {
+            for (String cookie : splitCookies(cookies)) {
+                int equalIndex = cookie.indexOf('=');
+                if (equalIndex == -1)
+                    continue;
+                if (cookie.startsWith("AccessToken="))
+                    return cookie.substring(equalIndex + 1);
             }
         }
 
         return null;
     }
 
-    public static String refreshFromCookies(List<String> cookies) {
-        for (String cookie : cookies) {
-            int index = cookie.indexOf(';');
-            if (index == -1)
-                continue;
-            if (cookie.startsWith("RefreshToken=")) {
-                return cookie.substring(index);
+    public static String refreshFromCookies(List<String> cookiesList) {
+        if (cookiesList == null)
+            return null;
+        for (String cookies : cookiesList) {
+            for (String cookie : splitCookies(cookies)) {
+                int equalIndex = cookie.indexOf('=');
+                if (equalIndex == -1)
+                    continue;
+                if (cookie.startsWith("RefreshToken="))
+                    return cookie.substring(equalIndex + 1);
             }
         }
 
         return null;
+    }
+
+    private static List<String> splitCookies(String cookies) {
+        ArrayList<String> list = new ArrayList<>();
+        for (String cookie : cookies.split(";"))
+            list.add(cookie.trim());
+        return list;
     }
 
     private static Tokens genTokens(String userid) {
