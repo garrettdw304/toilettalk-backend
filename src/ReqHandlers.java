@@ -19,7 +19,7 @@ import java.time.LocalDateTime;
  */
 
 public class ReqHandlers {
-    private static final int REVIEWS_PER_PAGE = 10;
+    private static final int ITEMS_PER_PAGE = 10;
     private static final int BASE_PAGE_NUMBER = 1; // Page numbers start at 1
 
     private static final byte[] INVALID_METHOD_RESPONSE =
@@ -221,7 +221,7 @@ public class ReqHandlers {
                     db.getCollection("reviews").find(new Document("bathroomid", bathroomid));
 
             try (MongoCursor<Document> cursor =
-                         docs.skip((page - BASE_PAGE_NUMBER) * REVIEWS_PER_PAGE).limit(REVIEWS_PER_PAGE).iterator()) {
+                         docs.skip((page - BASE_PAGE_NUMBER) * ITEMS_PER_PAGE).limit(ITEMS_PER_PAGE).iterator()) {
                 while (cursor.hasNext()) {
                     Document d = cursor.next();
                     sb.append(new Document()
@@ -306,9 +306,61 @@ public class ReqHandlers {
 
     public static void getBathrooms(HttpExchange e) {
         try {
-            closeOutRequest(e, ResponseCodes.BAD_REQUEST, "No!".getBytes(StandardCharsets.UTF_8));
+            if (!ensureMethod(e, "GET")) return;
         } catch (IOException ex) {
-            throw new RuntimeException(ex);
+            printException(e, ex, "Failed while sending error response about wrong request method.");
+            return;
+        }
+
+        String buildingId;
+        int page;
+        try {
+            Document reqDoc = getReqDoc(e.getRequestBody());
+            buildingId = reqDoc.getString("buildingid");
+            page = reqDoc.getInteger("page"); // TODO: What if null is returned?
+        } catch (IOException ex) {
+            printException(e, ex, "Failed while getting request body.");
+            return;
+        }
+        if (page < BASE_PAGE_NUMBER) page = BASE_PAGE_NUMBER;
+        if (buildingId == null) {
+            try {
+                closeOutRequest(e, ResponseCodes.BAD_REQUEST, BATHROOM_ID_NOT_PRESENT_RESPONSE);
+            } catch (IOException ex) {
+                printException(e, ex, "Failed while sending error response about a bathroom not existing.");
+                return;
+            }
+            return;
+        }
+
+        try (final MongoClient c = DB.client()) {
+            MongoDatabase db = DB.db(c);
+
+            StringBuilder sb = new StringBuilder("[");
+            FindIterable<Document> docs =
+                    db.getCollection("bathrooms").find(new Document("buildingid", buildingId));
+
+            try (MongoCursor<Document> cursor =
+                         docs.skip((page - BASE_PAGE_NUMBER) * ITEMS_PER_PAGE).limit(ITEMS_PER_PAGE).iterator()) {
+                while (cursor.hasNext()) {
+                    Document d = cursor.next();
+                    sb.append(new Document()
+                            .append("bathroomid", d.getString("bathroomid"))
+                            // Do we need to send bathroom id if they are all the one that the request asked for?
+                            .append("buildingid", d.getString("buildingid"))
+                            .append("name", d.getString("name")).toJson()).append(", ");
+                }
+            }
+            if (!sb.isEmpty()) sb.delete(sb.length() - 2, sb.length()); // Deletes final comma and space after it.
+            sb.append("]");
+            byte[] response = sb.toString().getBytes(StandardCharsets.UTF_8);
+
+            try {
+                closeOutRequest(e, ResponseCodes.OK, response);
+            } catch (IOException ex) {
+                printException(e, ex, "Failed while sending response containing reviews.");
+                return;
+            }
         }
     }
 
