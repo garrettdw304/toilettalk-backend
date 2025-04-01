@@ -40,6 +40,8 @@ public class ReqHandlers {
             "{ \"error\": \"Invalid username or password.\" }".getBytes(StandardCharsets.UTF_8);
     private static final byte[] BATHROOM_ID_NOT_PRESENT_RESPONSE =
             "{ \"error\": \"Bathroom id not present in request.\" }".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] BUILDING_ID_NOT_PRESENT_RESPONSE =
+            "{ \"error\": \"Building id not present in request.\" }".getBytes(StandardCharsets.UTF_8);
     private static final byte[] UNAUTHORIZED_REFRESH =
             "{ \"error\": \"Token sent could not authorize an access refresh.\" }".getBytes(StandardCharsets.UTF_8);
     private static final byte[] UNAUTHORIZED_CREATE_REVIEW =
@@ -325,7 +327,7 @@ public class ReqHandlers {
         if (page < BASE_PAGE_NUMBER) page = BASE_PAGE_NUMBER;
         if (buildingId == null) {
             try {
-                closeOutRequest(e, ResponseCodes.BAD_REQUEST, BATHROOM_ID_NOT_PRESENT_RESPONSE);
+                closeOutRequest(e, ResponseCodes.BAD_REQUEST, BUILDING_ID_NOT_PRESENT_RESPONSE);
             } catch (IOException ex) {
                 printException(e, ex, "Failed while sending error response about a bathroom not existing.");
                 return;
