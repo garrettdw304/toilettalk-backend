@@ -26,6 +26,8 @@ public class Main {
                     e -> ReqHandlers.handleUncaughtExceptions(ReqHandlers::signUp, e));
             server.createContext("/api/signIn",
                     e -> ReqHandlers.handleUncaughtExceptions(ReqHandlers::signIn, e));
+            server.createContext("/api/signOut",
+                    e -> ReqHandlers.handleUncaughtExceptions(ReqHandlers::signOut, e));
             server.createContext("/api/refreshAccess",
                     e -> ReqHandlers.handleUncaughtExceptions(ReqHandlers::refreshAccess, e));
             server.createContext("/api/getReviews",
