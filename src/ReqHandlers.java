@@ -149,6 +149,26 @@ public class ReqHandlers {
         }
     }
 
+    public static void signOut(HttpExchange e) {
+        try {
+            if (!ensureMethod(e, "POST")) return;
+        } catch (IOException ex) {
+            printException(e, ex, "Failed while sending error response about wrong request method.");
+        }
+
+        e.getResponseHeaders().add("Set-Cookie",
+                "AccessToken=; Path=/; HttpOnly; SameSite=Strict; expires=Thu, 01 Jan 1970 00:00:00 GMT");
+        e.getResponseHeaders().add("Set-Cookie",
+                "RefreshToken=; Path=/; HttpOnly; SameSite=Strict; expires=Thu, 01 Jan 1970 00:00:00 GMT");
+
+        try {
+            e.sendResponseHeaders(ResponseCodes.OK, 0);
+            e.close();
+        } catch (IOException ex) {
+            printException(e, ex, "Failed while sending response to clear auth tokens.");
+        }
+    }
+
     public static void refreshAccess(HttpExchange e) {
         try {
             if (!ensureMethod(e, "POST")) return;
