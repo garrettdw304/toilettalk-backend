@@ -35,7 +35,7 @@ public class Main {
             server.createContext("/api/getBathrooms",
                     e -> ReqHandlers.handleUncaughtExceptions(ReqHandlers::getBathrooms, e));
             server.createContext("/api/getBuildings",
-                    e -> ReqHandlers.handleUncaughtExceptions(ReqHandlers::getBathrooms, e));
+                    e -> ReqHandlers.handleUncaughtExceptions(ReqHandlers::getBuildings, e));
 
             server.start();
         } else {

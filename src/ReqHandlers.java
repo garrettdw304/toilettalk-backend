@@ -46,6 +46,8 @@ public class ReqHandlers {
             "{ \"error\": \"Token sent could not authorize an access refresh.\" }".getBytes(StandardCharsets.UTF_8);
     private static final byte[] UNAUTHORIZED_CREATE_REVIEW =
             "{ \"error\": \"Token sent could not authorize a create review.\" }".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] BATHROOM_DOES_NOT_EXIST_RESPONSE =
+            "{ \"error\": \"The bathroom with the specified id does not exist.\" }".getBytes(StandardCharsets.UTF_8);
 
     /**
      * Helper method that calls an HttpHandler with the provided HttpExchange
@@ -233,7 +235,7 @@ public class ReqHandlers {
                             .append("review", d.getString("review")).toJson()).append(", ");
                 }
             }
-            if (!sb.isEmpty()) sb.delete(sb.length() - 2, sb.length()); // Deletes final comma and space after it.
+            if (sb.length() > 1) sb.delete(sb.length() - 2, sb.length()); // Deletes final comma and space after it.
             sb.append("]");
             byte[] response = sb.toString().getBytes(StandardCharsets.UTF_8);
 
@@ -286,6 +288,16 @@ public class ReqHandlers {
 
         try (MongoClient c = DB.client()) {
             MongoDatabase db = DB.db(c);
+            if (db.getCollection("bathrooms").find(new Document("bathroomid", bathroomid)).first() == null) {
+                try {
+                    closeOutRequest(e, ResponseCodes.BAD_REQUEST, BATHROOM_DOES_NOT_EXIST_RESPONSE);
+                } catch (IOException exc) {
+                    printException(e, exc, "Failed while sending error response about the client being unauthorized.");
+                    return;
+                }
+                return;
+            }
+
             MongoCollection<Document> collection = db.getCollection("reviews");
             Document oldReview = collection.find(new Document()
                     .append("userid", userid)
@@ -353,7 +365,7 @@ public class ReqHandlers {
                             .append("name", d.getString("name")).toJson()).append(", ");
                 }
             }
-            if (!sb.isEmpty()) sb.delete(sb.length() - 2, sb.length()); // Deletes final comma and space after it.
+            if (sb.length() > 1) sb.delete(sb.length() - 2, sb.length()); // Deletes final comma and space after it.
             sb.append("]");
             byte[] response = sb.toString().getBytes(StandardCharsets.UTF_8);
 
@@ -368,9 +380,48 @@ public class ReqHandlers {
 
     public static void getBuildings(HttpExchange e) {
         try {
-            closeOutRequest(e, ResponseCodes.BAD_REQUEST, "No!".getBytes(StandardCharsets.UTF_8));
+            if (!ensureMethod(e, "GET")) return;
         } catch (IOException ex) {
-            throw new RuntimeException(ex);
+            printException(e, ex, "Failed while sending error response about wrong request method.");
+            return;
+        }
+
+        int page;
+        try {
+            Document reqDoc = getReqDoc(e.getRequestBody());
+            page = reqDoc.getInteger("page"); // TODO: What if null is returned?
+        } catch (IOException ex) {
+            printException(e, ex, "Failed while getting request body.");
+            return;
+        }
+        if (page < BASE_PAGE_NUMBER) page = BASE_PAGE_NUMBER;
+
+        try (final MongoClient c = DB.client()) {
+            MongoDatabase db = DB.db(c);
+
+            StringBuilder sb = new StringBuilder("[");
+            FindIterable<Document> docs =
+                    db.getCollection("buildings").find();
+
+            try (MongoCursor<Document> cursor =
+                         docs.skip((page - BASE_PAGE_NUMBER) * ITEMS_PER_PAGE).limit(ITEMS_PER_PAGE).iterator()) {
+                while (cursor.hasNext()) {
+                    Document d = cursor.next();
+                    sb.append(new Document()
+                            .append("buildingid", d.getString("buildingid"))
+                            .append("name", d.getString("name")).toJson()).append(", ");
+                }
+            }
+            if (sb.length() > 1) sb.delete(sb.length() - 2, sb.length()); // Deletes final comma and space after it.
+            sb.append("]");
+            byte[] response = sb.toString().getBytes(StandardCharsets.UTF_8);
+
+            try {
+                closeOutRequest(e, ResponseCodes.OK, response);
+            } catch (IOException ex) {
+                printException(e, ex, "Failed while sending response containing reviews.");
+                return;
+            }
         }
     }
 
