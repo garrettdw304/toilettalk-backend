@@ -44,10 +44,17 @@ public class Main {
             System.err.println("ENV initialization failed. THE SERVER IS NOT RUNNING! Fix the errors and relaunch the program.");
         }
 
-        try {
-            Commands.Repl();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        if (args.length == 1 && args[0].equals("hostConfigServer")) {
+            System.out.println("Hosting configServer.");
+            ConfigServer.start();
+        }
+        else {
+            System.out.println("Using standard io for commands.");
+            try {
+                Commands.Repl();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
         }
 
         if (Env.INIT_SUCCESSFUL) {

@@ -8,7 +8,7 @@ public class Commands {
     private static final Map<String, String> HELPERS = new HashMap<>();
 
     static {{
-        addCommand("exit", (_a) -> {},
+        addCommand("exit", (_a, _b) -> {},
                 "exit\n\tCloses the application.");
         addCommand("help", Commands::helpHandler,
                 "help [command]\n\tDisplays help information on commands.");
@@ -25,6 +25,10 @@ public class Commands {
      * @return True if exit was called, false otherwise.
      */
     public static boolean execute(String input) {
+        return execute(input, System.out);
+    }
+
+    public static boolean execute(String input, PrintStream output) {
         Scanner scanner = new Scanner(input);
         if (!scanner.hasNext())
             return false;
@@ -35,9 +39,9 @@ public class Commands {
 
         CommandHandler handler = HANDLERS.get(command);
         if (handler != null)
-            handler.handle(scanner);
+            handler.handle(scanner, output);
         else
-            System.out.println("Invalid command. Type 'help' for info on commands.");
+            output.println("Invalid command. Type 'help' for info on commands.");
 
         return false;
     }
@@ -57,22 +61,22 @@ public class Commands {
 
     //---COMMAND HANDLERS-----------------------------------------------------------------------------------------------
 
-    private static void helpHandler(Scanner args) {
+    private static void helpHandler(Scanner args, PrintStream output) {
         if (args.hasNext()) {
             String help = HELPERS.get(args.next());
             if (help != null) {
-                System.out.println(help);
+                output.println(help);
                 return;
             }
         }
 
         for (String help : HELPERS.values())
-            System.out.println(help);
+            output.println(help);
     }
 
-    private static void testHandler(Scanner args) {
+    private static void testHandler(Scanner args, PrintStream output) {
         if (!args.hasNext()) {
-            helpHandler(new Scanner("test"));
+            helpHandler(new Scanner("test"), output);
             return;
         }
 
@@ -81,9 +85,9 @@ public class Commands {
             case "delete" -> Testing.deleteAllData();
             case "keys" -> Testing.genRSAKeys();
             case "data" -> Testing.genTestingCollections();
-            default -> System.out.println("Invalid arguments. Try 'help test'.");
+            default -> output.println("Invalid arguments. Try 'help test'.");
         }
     }
 
-    private interface CommandHandler { void handle(Scanner args); }
+    private interface CommandHandler { void handle(Scanner args, PrintStream output); }
 }
