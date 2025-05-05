@@ -26,8 +26,8 @@ public class Main {
                     e -> ReqHandlers.handleUncaughtExceptions(ReqHandlers::signUp, e));
             server.createContext("/api/signIn",
                     e -> ReqHandlers.handleUncaughtExceptions(ReqHandlers::signIn, e));
-            server.createContext("/api/signOut",
-                    e -> ReqHandlers.handleUncaughtExceptions(ReqHandlers::signOut, e));
+            server.createContext("/api/getMyInfo",
+                    e -> ReqHandlers.handleUncaughtExceptions(ReqHandlers::getMyInfo, e));
             server.createContext("/api/refreshAccess",
                     e -> ReqHandlers.handleUncaughtExceptions(ReqHandlers::refreshAccess, e));
             server.createContext("/api/getReviews",
@@ -38,6 +38,16 @@ public class Main {
                     e -> ReqHandlers.handleUncaughtExceptions(ReqHandlers::getBathrooms, e));
             server.createContext("/api/getBuildings",
                     e -> ReqHandlers.handleUncaughtExceptions(ReqHandlers::getBuildings, e));
+            server.createContext("/api/getBuildingsWithBathrooms",
+                    e -> ReqHandlers.handleUncaughtExceptions(ReqHandlers::getBuildingsWithBathrooms, e));
+            server.createContext("/api/getBathroomWithReviews",
+                    e -> ReqHandlers.handleUncaughtExceptions(ReqHandlers::getBathroomWithReviews, e));
+            server.createContext("/api/getChats",
+                    e -> ReqHandlers.handleUncaughtExceptions(ReqHandlers::getChats, e));
+            server.createContext("/api/createChat",
+                    e -> ReqHandlers.handleUncaughtExceptions(ReqHandlers::createChat, e));
+            server.createContext("/api/deleteChat",
+                    e -> ReqHandlers.handleUncaughtExceptions(ReqHandlers::deleteChat, e));
 
             server.start();
         } else {

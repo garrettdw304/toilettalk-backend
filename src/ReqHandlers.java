@@ -5,10 +5,15 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import org.bson.Document;
 import org.jetbrains.annotations.Nullable;
+import org.json.JSONArray;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 
 /*
  * This file defines Request Handlers that will be called by the HttpServer when a request with a specific context
@@ -19,7 +24,7 @@ import java.time.LocalDateTime;
  */
 
 public class ReqHandlers {
-    private static final int ITEMS_PER_PAGE = 10;
+    private static final int ITEMS_PER_PAGE = 100;
     private static final int BASE_PAGE_NUMBER = 1; // Page numbers start at 1
 
     private static final byte[] INVALID_METHOD_RESPONSE =
@@ -48,6 +53,8 @@ public class ReqHandlers {
             "{ \"error\": \"Token sent could not authorize a create review.\" }".getBytes(StandardCharsets.UTF_8);
     private static final byte[] BATHROOM_DOES_NOT_EXIST_RESPONSE =
             "{ \"error\": \"The bathroom with the specified id does not exist.\" }".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] NOT_SIGNED_IN_RESPONSE =
+            "{ \"error\": \"Not signed in.\" }".getBytes(StandardCharsets.UTF_8);
 
     /**
      * Helper method that calls an HttpHandler with the provided HttpExchange
@@ -57,6 +64,26 @@ public class ReqHandlers {
      * @param e The exchange to pass to the handler when calling it.
      */
     public static void handleUncaughtExceptions(HttpHandler handler, HttpExchange e) {
+        System.out.println("Request");
+        System.out.println(e.getRequestURI());
+
+        e.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+        e.getResponseHeaders().add("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        e.getResponseHeaders().add("Access-Control-Allow-Headers", "Content-Type");
+        e.getResponseHeaders().put("Content-Type", List.of("application/json"));
+
+        if ("OPTIONS".equalsIgnoreCase(e.getRequestMethod())) {
+            System.out.println("OPTIONS");
+            try{
+                e.sendResponseHeaders(200, 0);
+                e.close();
+            } catch (IOException ex) {
+                printException(e, ex, "OPTIONS return caused error.");
+            }
+            return;
+        }
+
+        System.out.println("Request received!");
         try (e) {
             handler.handle(e);
         } catch (Exception ex) {
@@ -89,12 +116,11 @@ public class ReqHandlers {
             try {
                 Auth.Tokens tokens = Auth.signUp(email, username, password);
 
-                // TODO: Set Secure also to ensure HTTPS once HTTPS is implemented.
-                e.getResponseHeaders().add("Set-Cookie",
-                        "AccessToken=" + tokens.accessToken() + "; Path=/; HttpOnly; SameSite=Strict");
-                e.getResponseHeaders().add("Set-Cookie",
-                        "RefreshToken=" + tokens.refreshToken() + "; Path=/; HttpOnly; SameSite=Strict");
-                closeOutRequest(e, ResponseCodes.OK);
+                Document resDoc = new Document().append("accessToken", tokens.accessToken())
+                        .append("refreshToken", tokens.refreshToken())
+                        .append("username", username)
+                        .append("userid", tokens.userid());
+                closeOutRequest(e, ResponseCodes.OK, resDoc);
             } catch (Auth.DuplicateEmail ex) {
                 closeOutRequest(e, ResponseCodes.CONFLICT, EMAIL_ALREADY_EXISTS_RESPONSE);
             } catch (Auth.InternalError ex) {
@@ -136,12 +162,11 @@ public class ReqHandlers {
         try {
             Auth.Tokens tokens = Auth.signIn(email, password);
 
-            // TODO: Set Secure also to ensure HTTPS once HTTPS is implemented.
-            e.getResponseHeaders().add("Set-Cookie",
-                    "AccessToken=" + tokens.accessToken() + "; Path=/; HttpOnly; SameSite=Strict");
-            e.getResponseHeaders().add("Set-Cookie",
-                    "RefreshToken=" + tokens.refreshToken() + "; Path=/; HttpOnly; SameSite=Strict");
-            closeOutRequest(e, ResponseCodes.OK);
+            Document resDoc = new Document().append("accessToken", tokens.accessToken())
+                    .append("refreshToken", tokens.refreshToken())
+                    .append("username", tokens.username())
+                    .append("userid", tokens.userid());
+            closeOutRequest(e, ResponseCodes.OK, resDoc);
         } catch (Auth.UserNotFound | Auth.IncorrectPassword ex) {
             try {
                 closeOutRequest(e, ResponseCodes.UNAUTHORIZED, UNAUTHORIZED_SIGN_IN_RESPONSE);
@@ -153,23 +178,55 @@ public class ReqHandlers {
         }
     }
 
-    public static void signOut(HttpExchange e) {
+    public static void getMyInfo(HttpExchange e) {
         try {
             if (!ensureMethod(e, "POST")) return;
         } catch (IOException ex) {
             printException(e, ex, "Failed while sending error response about wrong request method.");
+            return;
         }
 
-        e.getResponseHeaders().add("Set-Cookie",
-                "AccessToken=; Path=/; HttpOnly; SameSite=Strict; expires=Thu, 01 Jan 1970 00:00:00 GMT");
-        e.getResponseHeaders().add("Set-Cookie",
-                "RefreshToken=; Path=/; HttpOnly; SameSite=Strict; expires=Thu, 01 Jan 1970 00:00:00 GMT");
-
+        String accessCookie;
         try {
-            e.sendResponseHeaders(ResponseCodes.OK, 0);
-            e.close();
+            Document body = getReqDoc(e.getRequestBody());
+            accessCookie = body.getString("accessToken");
         } catch (IOException ex) {
-            printException(e, ex, "Failed while sending response to clear auth tokens.");
+            printException(e, ex, "Failed while getting request body.");
+            return;
+        }
+
+        DecodedJWT accessToken;
+        try {
+            accessToken = Auth.verifyAccess(accessCookie);
+
+        } catch (Auth.TokenIsNotAccess | JWTVerificationException ex) {
+            try {
+                System.err.println(ex);
+                closeOutRequest(e, ResponseCodes.UNAUTHORIZED, NOT_SIGNED_IN_RESPONSE);
+            } catch (IOException exc) {
+                printException(e, exc, "Failed while sending error response about the client being unauthorized.");
+                return;
+            }
+            return;
+        }
+
+        String userid = accessToken.getClaim("userid").asString();
+        Document resDoc = new Document();
+        resDoc.put("userid", userid);
+
+        try (final MongoClient c = DB.client()) {
+            MongoDatabase db = DB.db(c);
+
+            String username =
+                    db.getCollection("users").find(new Document("userid", userid)).first().getString("username");
+
+            resDoc.put("username", username);
+        }
+        
+        try {
+            closeOutRequest(e, ResponseCodes.OK, resDoc.toJson().getBytes(StandardCharsets.UTF_8));
+        } catch (IOException ex) {
+            printException(e, ex, "Failed while sending a user's info.");
         }
     }
 
@@ -181,7 +238,14 @@ public class ReqHandlers {
             return;
         }
 
-        String refreshToken = Auth.refreshFromCookies(e.getRequestHeaders().get("Cookie"));
+        String refreshToken;
+        try {
+            Document body = getReqDoc(e.getRequestBody());
+            refreshToken = body.getString("refreshToken");
+        } catch (IOException ex) {
+            printException(e, ex, "Failed while getting request body.");
+            return;
+        }
 
         String accessToken;
         try {
@@ -198,10 +262,8 @@ public class ReqHandlers {
         }
 
         try {
-            // TODO: Set Secure also to ensure HTTPS once HTTPS is implemented.
-            e.getResponseHeaders().add("Set-Cookie",
-                    "AccessToken=" + accessToken + "; Path=/; HttpOnly; SameSite=Strict");
-            closeOutRequest(e, ResponseCodes.OK);
+            Document resDoc = new Document().append("accessToken", accessToken);
+            closeOutRequest(e, ResponseCodes.OK, resDoc);
         } catch (IOException ex) {
             printException(e, ex, "Failed while sending response containing new access token.");
         }
@@ -210,7 +272,7 @@ public class ReqHandlers {
     // TODO: Allow users to sort by rating.
     public static void getReviews(HttpExchange e) {
         try {
-            if (!ensureMethod(e, "GET")) return;
+            if (!ensureMethod(e, "POST")) return;
         } catch (IOException ex) {
             printException(e, ex, "Failed while sending error response about wrong request method.");
             return;
@@ -270,29 +332,30 @@ public class ReqHandlers {
 
     public static void createReview(HttpExchange e) {
         try {
-            if (!ensureMethod(e, "PUT")) return;
+            if (!ensureMethod(e, "POST")) return;
         } catch (IOException ex) {
             printException(e, ex, "Failed while sending error response about wrong request method.");
             return;
         }
 
-        DecodedJWT accessToken;
+        String accessCookie;
         String bathroomid;
         int rating;
         String review;
         try {
             Document reqDoc = getReqDoc(e.getRequestBody());
-            String accessCookie = Auth.accessFromCookies(e.getRequestHeaders().get("Cookie"));
-            if (accessCookie == null)
-                throw new Auth.TokenIsNotAccess();
-            accessToken = Auth.verifyAccess(accessCookie);
+            accessCookie = reqDoc.getString("accessToken");
             bathroomid = reqDoc.getString("bathroomid");
             rating = reqDoc.getInteger("rating");
             review = reqDoc.getString("review");
-
         } catch (IOException ex) {
             printException(e, ex, "Failed while getting request body.");
             return;
+        }
+
+        DecodedJWT accessToken;
+        try {
+            accessToken = Auth.verifyAccess(accessCookie);
         } catch (Auth.TokenIsNotAccess | JWTVerificationException ex) {
             try {
                 System.err.println(ex);
@@ -340,7 +403,7 @@ public class ReqHandlers {
 
     public static void getBathrooms(HttpExchange e) {
         try {
-            if (!ensureMethod(e, "GET")) return;
+            if (!ensureMethod(e, "POST")) return;
         } catch (IOException ex) {
             printException(e, ex, "Failed while sending error response about wrong request method.");
             return;
@@ -400,7 +463,7 @@ public class ReqHandlers {
 
     public static void getBuildings(HttpExchange e) {
         try {
-            if (!ensureMethod(e, "GET")) return;
+            if (!ensureMethod(e, "POST")) return;
         } catch (IOException ex) {
             printException(e, ex, "Failed while sending error response about wrong request method.");
             return;
@@ -445,6 +508,290 @@ public class ReqHandlers {
         }
     }
 
+    public static void getBuildingsWithBathrooms(HttpExchange e) {
+        try {
+            if (!ensureMethod(e, "POST")) return;
+        } catch (IOException ex) {
+            printException(e, ex, "Failed while sending error response about wrong request method.");
+            return;
+        }
+
+        int page;
+        try {
+            Document reqDoc = getReqDoc(e.getRequestBody());
+            page = reqDoc.getInteger("page"); // TODO: What if null is returned?
+        } catch (IOException ex) {
+            printException(e, ex, "Failed while getting request body.");
+            return;
+        }
+        if (page < BASE_PAGE_NUMBER) page = BASE_PAGE_NUMBER;
+
+        try (final MongoClient c = DB.client()) {
+            MongoDatabase db = DB.db(c);
+
+            FindIterable<Document> docs =
+                    db.getCollection("buildings").find();
+            List<Document> toReturn = new ArrayList<>(ITEMS_PER_PAGE);
+            try (MongoCursor<Document> cursor =
+                         docs.skip((page - BASE_PAGE_NUMBER) * ITEMS_PER_PAGE).limit(ITEMS_PER_PAGE).iterator()) {
+                while (cursor.hasNext())
+                    toReturn.add(cursor.next());
+            }
+
+            for (Document d : toReturn) {
+                docs = db.getCollection("bathrooms").find(new Document("buildingid", d.getString("buildingid")));
+                try (MongoCursor<Document> cursor =
+                             docs.skip((page - BASE_PAGE_NUMBER) * ITEMS_PER_PAGE).limit(ITEMS_PER_PAGE).iterator()) {
+                    List<Document> bathrooms = new ArrayList<>();
+                    while (cursor.hasNext())
+                        bathrooms.add(cursor.next());
+                    d.append("bathrooms", bathrooms);
+                }
+            }
+
+            StringBuilder sb = new StringBuilder("[");
+            for (Document d : toReturn)
+                sb.append(d.toJson()).append(", ");
+            if (sb.length() > 1) sb.delete(sb.length() - 2, sb.length()); // Deletes final comma and space after it.
+            sb.append("]");
+
+            System.out.println(sb);
+
+            byte[] response = sb.toString().getBytes(StandardCharsets.UTF_8);
+
+            try {
+                closeOutRequest(e, ResponseCodes.OK, response);
+            } catch (IOException ex) {
+                printException(e, ex, "Failed while sending response containing reviews.");
+                return;
+            }
+        }
+    }
+
+    public static void getBathroomWithReviews(HttpExchange e) {
+        try {
+            if (!ensureMethod(e, "POST")) return;
+        } catch (IOException ex) {
+            printException(e, ex, "Failed while sending error response about wrong request method.");
+            return;
+        }
+
+        String bathroomid;
+        int page;
+        try {
+            Document reqDoc = getReqDoc(e.getRequestBody());
+            bathroomid = reqDoc.getString("bathroomid");
+            page = reqDoc.getInteger("page"); // TODO: What if null is returned?
+        } catch (IOException ex) {
+            printException(e, ex, "Failed while getting request body.");
+            return;
+        }
+        if (page < BASE_PAGE_NUMBER) page = BASE_PAGE_NUMBER;
+        if (bathroomid == null) {
+            try {
+                closeOutRequest(e, ResponseCodes.BAD_REQUEST, BATHROOM_ID_NOT_PRESENT_RESPONSE);
+            } catch (IOException ex) {
+                printException(e, ex, "Failed while sending error response about a bathroom not existing.");
+                return;
+            }
+            return;
+        }
+
+        try (final MongoClient c = DB.client()) {
+            MongoDatabase db = DB.db(c);
+
+            Document toReturn = db.getCollection("bathrooms").find(new Document("bathroomid", bathroomid)).first();
+            FindIterable<Document> docs =
+                    db.getCollection("reviews").find(new Document("bathroomid", bathroomid));
+
+            try (MongoCursor<Document> cursor =
+                         docs.skip((page - BASE_PAGE_NUMBER) * ITEMS_PER_PAGE).limit(ITEMS_PER_PAGE).iterator()) {
+                List<Document> reviews = new ArrayList<>(ITEMS_PER_PAGE);
+                while (cursor.hasNext()) {
+                    Document d = cursor.next();
+                    d.append("username", db.getCollection("users").find(new Document("userid", d.getString("userid"))).first().getString("username"));
+                    reviews.add(d);
+                }
+
+                toReturn.append("reviews", reviews);
+                toReturn.append("buildingName", db.getCollection("buildings").find(new Document("buildingid", toReturn.getString("buildingid"))).first().getString("name"));
+            }
+
+            try {
+                System.out.println(toReturn.toJson());
+                closeOutRequest(e, ResponseCodes.OK, toReturn.toJson());
+            } catch (IOException ex) {
+                printException(e, ex, "Failed while sending response containing reviews.");
+                return;
+            }
+        }
+    }
+
+    public static void getChats(HttpExchange e) {
+        try {
+            if (!ensureMethod(e, "POST")) return;
+        } catch (IOException ex) {
+            printException(e, ex, "Failed while sending error response about wrong request method.");
+            return;
+        }
+
+        int page;
+        try {
+            Document reqDoc = getReqDoc(e.getRequestBody());
+            page = reqDoc.getInteger("page"); // TODO: What if null is returned?
+        } catch (IOException ex) {
+            printException(e, ex, "Failed while getting request body.");
+            return;
+        }
+        if (page < BASE_PAGE_NUMBER) page = BASE_PAGE_NUMBER;
+
+        try (final MongoClient c = DB.client()) {
+            MongoDatabase db = DB.db(c);
+
+            FindIterable<Document> docs =
+                    db.getCollection("chats").find();
+
+            JSONArray toReturn = new JSONArray();
+            try (MongoCursor<Document> cursor =
+                         docs.skip((page - BASE_PAGE_NUMBER) * ITEMS_PER_PAGE).limit(ITEMS_PER_PAGE).iterator()) {
+                while (cursor.hasNext()) {
+                    Document d = cursor.next();
+                    if (d.getBoolean("anon")) {
+                        d.remove("userid");
+                        d.append("username", "anon");
+                    }
+                    else
+                        d.append("username", db.getCollection("users").find(new Document("userid", d.getString("userid"))).first().getString("username"));
+
+                    toReturn.put(new org.json.JSONObject(d.toJson()));
+                }
+            }
+
+            try {
+                closeOutRequest(e, ResponseCodes.OK, toReturn.toString());
+            } catch (IOException ex) {
+                printException(e, ex, "Failed while sending response containing reviews.");
+                return;
+            }
+        }
+    }
+
+    public static void createChat(HttpExchange e) {
+        try {
+            if (!ensureMethod(e, "POST")) return;
+        } catch (IOException ex) {
+            printException(e, ex, "Failed while sending error response about wrong request method.");
+            return;
+        }
+
+        String accessCookie;
+        String text;
+        boolean isAnon;
+        try {
+            Document reqDoc = getReqDoc(e.getRequestBody());
+            accessCookie = reqDoc.getString("accessToken");
+            text = reqDoc.getString("text");
+            isAnon = reqDoc.getBoolean("anon");
+        } catch (IOException ex) {
+            printException(e, ex, "Failed while getting request body.");
+            return;
+        }
+
+        DecodedJWT accessToken;
+        try {
+            accessToken = Auth.verifyAccess(accessCookie);
+        } catch (Auth.TokenIsNotAccess | JWTVerificationException ex) {
+            try {
+                System.err.println(ex);
+                closeOutRequest(e, ResponseCodes.UNAUTHORIZED, UNAUTHORIZED_CREATE_REVIEW);
+            } catch (IOException exc) {
+                printException(e, exc, "Failed while sending error response about the client being unauthorized.");
+                return;
+            }
+            return;
+        }
+
+        String userid = accessToken.getClaim("userid").asString();
+
+        try (MongoClient c = DB.client()) {
+            MongoDatabase db = DB.db(c);
+
+            MongoCollection<Document> chats = db.getCollection("chats");
+            chats.insertOne(new Document()
+                    .append("userid", userid)
+                    .append("text", text)
+                    .append("datetime", LocalDateTime.now().format(DateTimeFormatter.ofPattern("d MMM uuuu HH:mm:ss")))
+                    .append("anon", isAnon)
+                    .append("chatid", UUID.randomUUID().toString())); // TODO: Pure luck that they don't collide :)
+        }
+
+        try {
+            closeOutRequest(e, ResponseCodes.OK);
+        } catch (IOException ex) {
+            printException(e, ex, "Failed while sending response confirming creation of new review.");
+        }
+    }
+
+    public static void deleteChat(HttpExchange e) {
+        try {
+            if (!ensureMethod(e, "POST")) return;
+        } catch (IOException ex) {
+            printException(e, ex, "Failed while sending error response about wrong request method.");
+            return;
+        }
+
+        String accessCookie;
+        String chatid;
+        try {
+            Document reqDoc = getReqDoc(e.getRequestBody());
+            accessCookie = reqDoc.getString("accessToken");
+            chatid = reqDoc.getString("chatid");
+        } catch (IOException ex) {
+            printException(e, ex, "Failed while getting request body.");
+            return;
+        }
+
+        DecodedJWT accessToken;
+        try {
+            accessToken = Auth.verifyAccess(accessCookie);
+        } catch (Auth.TokenIsNotAccess | JWTVerificationException ex) {
+            try {
+                System.err.println(ex);
+                closeOutRequest(e, ResponseCodes.UNAUTHORIZED, UNAUTHORIZED_CREATE_REVIEW);
+            } catch (IOException exc) {
+                printException(e, exc, "Failed while sending error response about the client being unauthorized.");
+                return;
+            }
+            return;
+        }
+
+        String userid = accessToken.getClaim("userid").asString();
+
+        try (MongoClient c = DB.client()) {
+            MongoDatabase db = DB.db(c);
+
+            MongoCollection<Document> chats = db.getCollection("chats");
+            if (!chats.find(new Document("chatid", chatid)).first().getString("userid").equals(userid))
+            {
+                try {
+                    closeOutRequest(e, ResponseCodes.UNAUTHORIZED, "User ids do not match.");
+                    return;
+                } catch (IOException exc) {
+                    printException(e, exc, "Failed while sending error response about the client being unauthorized.");
+                    return;
+                }
+            }
+            chats.deleteOne(new Document("chatid", chatid));
+        }
+
+        try {
+            closeOutRequest(e, ResponseCodes.OK);
+        } catch (IOException ex) {
+            printException(e, ex, "Failed while sending response confirming creation of new review.");
+        }
+
+    }
+
     public static void printException(HttpExchange e, Exception ex) {
         printException(e, ex, null);
     }
@@ -465,12 +812,14 @@ public class ReqHandlers {
 
     private static Document getReqDoc(InputStream reqBody) throws IOException {
         try (reqBody) { // close on success or more importantly on failure as suggested by InputStream.readAllBytes().
-            return Document.parse(new String(reqBody.readAllBytes()));
+            String str = new String(reqBody.readAllBytes());
+            System.out.println(str);
+            return Document.parse(str);
         }
     }
 
     private static void closeOutRequest(HttpExchange e, int rCode) throws IOException {
-        closeOutRequest(e, rCode, null);
+        closeOutRequest(e, rCode, (byte[])null);
     }
 
     private static void closeOutRequest(HttpExchange e, int rCode, byte @Nullable [] response) throws IOException {
@@ -482,6 +831,14 @@ public class ReqHandlers {
             e.getResponseBody().write(response);
             e.close();
         }
+    }
+
+    private static void closeOutRequest(HttpExchange e, int rCode, String response) throws IOException {
+        closeOutRequest(e, rCode, response.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static void closeOutRequest(HttpExchange e, int rCode, Document response) throws IOException {
+        closeOutRequest(e, rCode, response.toJson());
     }
 
     /**

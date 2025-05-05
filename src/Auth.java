@@ -32,7 +32,7 @@ public class Auth {
             Document userDoc = createNewUserDoc(email, username, password, db);
             db.getCollection("users").insertOne(userDoc);
 
-            return genTokens(userDoc.getString("userid"));
+            return genTokens(userDoc.getString("userid"), username);
         }
     }
 
@@ -48,13 +48,13 @@ public class Auth {
         if (!userdata.getString("password").equals(BCrypt.hashpw(password, userdata.getString("salt"))))
             throw new IncorrectPassword();
 
-        return genTokens(userdata.getString("userid"));
+        return genTokens(userdata.getString("userid"), userdata.getString("username"));
     }
 
     public static String refreshAccess(@NotNull String refreshToken) throws JWTVerificationException, TokenIsNotRefresh {
         DecodedJWT jwt = verifyRefresh(refreshToken);
         String userid = jwt.getClaim("userid").asString();
-        return genTokens(userid).accessToken;
+        return genTokens(userid, "").accessToken;
     }
 
     public static DecodedJWT verify(@NotNull String token) throws JWTVerificationException {
@@ -131,8 +131,8 @@ public class Auth {
         return list;
     }
 
-    private static Tokens genTokens(String userid) {
-        return new Tokens(genAccessToken(userid), genRefreshToken(userid));
+    private static Tokens genTokens(String userid, String username) {
+        return new Tokens(genAccessToken(userid), genRefreshToken(userid), userid, username);
     }
 
     private static String genAccessToken(String userid) {
@@ -170,7 +170,7 @@ public class Auth {
         return password != null && !password.isBlank() && password.length() >= 8;
     }
 
-    public record Tokens(String accessToken, String refreshToken) { }
+    public record Tokens(String accessToken, String refreshToken, String userid, String username) { }
 
     public static class AuthException extends Exception { }
     public static class InternalError extends AuthException { }

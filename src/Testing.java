@@ -54,6 +54,7 @@ public class Testing {
                     bathroomDocs[i] = new Document[rand.nextInt(0, 4)];
                     for (int j = 0; j < bathroomDocs[i].length; j++) {
                         bathroomDocs[i][j] = new Document()
+                                .append("average", 0)
                                 .append("bathroomid", UUID.randomUUID().toString())
                                 .append("buildingid", buildingDocs[i].get("buildingid"))
                                 .append("name", (rand.nextBoolean() ? "Men's" : "Women's") + " Bathroom #" + Long.toString(rand.nextLong()).substring(0, 5));
@@ -77,6 +78,20 @@ public class Testing {
                                 .append("rating", rand.nextInt(0, 6))
                                 .append("review", "r" + rand.nextLong()));
                     }
+                }
+            }
+
+            // Gen bathroom averages
+            for (Document[] bathrooms : bathroomDocs) {
+                for (Document bathroom : bathrooms) {
+                    float max = 0;
+                    float rating = 0;
+                    for (Document review : reviews.find(new Document("bathroomid", bathroom.getString("bathroomid")))) {
+                        max += 5;
+                        rating += review.getInteger("rating");
+                    }
+                    bathroom.append("average", max / rating);
+                    db.getCollection("bathrooms").replaceOne(new Document("bathroomid", bathroom.getString("bathroomid")), bathroom);
                 }
             }
         } catch (Auth.InternalError e) {
