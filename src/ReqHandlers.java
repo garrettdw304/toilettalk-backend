@@ -212,17 +212,25 @@ public class ReqHandlers {
 
         String userid = accessToken.getClaim("userid").asString();
         Document resDoc = new Document();
-        resDoc.put("userid", userid);
 
         try (final MongoClient c = DB.client()) {
             MongoDatabase db = DB.db(c);
 
-            String username =
-                    db.getCollection("users").find(new Document("userid", userid)).first().getString("username");
+            List<Document> recentReviews = new ArrayList<>(5);
+            try (MongoCursor<Document> cursor = db.getCollection("reviews").find(new Document("userid", userid)).limit(5).sort(new Document("_id", -1)).cursor()) {
+                while (cursor.hasNext()) {
+                    Document review = cursor.next();
 
-            resDoc.put("username", username);
+                    String username = db.getCollection("users").find(new Document("userid", review.getString("userid"))).first().getString("username");
+                    review.append("username", username);
+
+                    recentReviews.add(review);
+                }
+            }
+
+            resDoc.append("reviews", recentReviews);
         }
-        
+
         try {
             closeOutRequest(e, ResponseCodes.OK, resDoc.toJson().getBytes(StandardCharsets.UTF_8));
         } catch (IOException ex) {
@@ -827,6 +835,7 @@ public class ReqHandlers {
             e.sendResponseHeaders(rCode, 0);
             e.close();
         } else {
+            System.out.println("Response\n" + new String(response));
             e.sendResponseHeaders(rCode, response.length);
             e.getResponseBody().write(response);
             e.close();
